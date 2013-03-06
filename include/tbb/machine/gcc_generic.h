@@ -56,10 +56,10 @@
 #define __TBB_full_memory_fence()           __sync_synchronize()
 #define __TBB_control_consistency_helper()  __sync_synchronize()
 
-#define __TBB_MACHINE_DEFINE_ATOMICS(S,T)                                                         \
-inline T __TBB_machine_cmpswp##S( volatile void *ptr, T value, T comparand ) {                    \
-    return __sync_val_compare_and_swap(reinterpret_cast<volatile T *>(ptr),comparand,value);      \
-}                                                                                                 \
+#define __TBB_MACHINE_DEFINE_ATOMICS(S,T)                                                       \
+inline T __TBB_machine_cmpswp##S(volatile void *ptr, T value, T comparand) {                    \
+    return __sync_val_compare_and_swap(reinterpret_cast<volatile T *>(ptr), comparand, value);  \
+}
 
 __TBB_MACHINE_DEFINE_ATOMICS(1,int8_t)
 __TBB_MACHINE_DEFINE_ATOMICS(2,int16_t)

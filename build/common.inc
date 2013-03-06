@@ -25,7 +25,6 @@
 # the GNU General Public License.
 
 ifndef tbb_os
-
   # Windows sets environment variable OS; for other systems, ask uname
   ifeq ($(OS),)
     OS:=$(shell uname)
@@ -44,7 +43,6 @@ ifndef tbb_os
   ifeq ($(OS), Darwin)
     export tbb_os=macos
   endif
-
 endif # !tbb_os
 
 ifeq ($(tbb_cpf),1)
@@ -59,57 +57,56 @@ endif
 include $(tbb_root)/build/$(tbb_os).inc
 
 ifeq ($(arch),)
- $(error Architecture not detected)
+  $(error Architecture not detected)
 endif
 ifeq ($(runtime),)
- $(error Runtime version not detected)
+  $(error Runtime version not detected)
 endif
 ifeq ($(wildcard $(tbb_root)/build/$(tbb_os).$(compiler).inc),)
   $(error Compiler "$(compiler)" is not supported on $(tbb_os). Add build/$(tbb_os).$(compiler).inc file with compiler-specific settings )
 endif
 
 ifdef target
- ifeq ($(wildcard $(tbb_root)/build/$(target).inc),)
-  $(error "$(target)" is not supported. Add build/$(target).inc file)
- endif
- include $(tbb_root)/build/$(target).inc
+  ifeq ($(wildcard $(tbb_root)/build/$(target).inc),)
+    $(error "$(target)" is not supported. Add build/$(target).inc file)
+  endif
+  include $(tbb_root)/build/$(target).inc
 endif
 
 # Support for running debug tests to release library and vice versa
-flip_cfg=$(subst _flipcfg,_release,$(subst _release,_debug,$(subst _debug,_flipcfg,$(1))))
-cross_cfg = $(if $(crosstest),$(call flip_cfg,$(1)),$(1))
+flip_cfg=$(subst _flipcfg, _release, $(subst _release, _debug, $(subst _debug, _flipcfg, $(1))))
+cross_cfg = $(if $(crosstest), $(call flip_cfg, $(1)), $(1))
 
 ifdef BUILDING_PHASE
- # Setting default configuration to release
- cfg?=release
- # No lambas or other C++0x extensions by default for compilers that implement them as experimental features
- lambdas ?= 0
- cpp0x ?= 0
- # include compiler-specific build configurations
- -include $(tbb_root)/build/$(tbb_os).$(compiler).inc
- ifdef extra_inc
-  -include $(tbb_root)/build/$(extra_inc)
- endif
+  # Setting default configuration to release
+  cfg?=release
+  # No lambas or other C++0x extensions by default for compilers that implement them as experimental features
+  lambdas ?= 0
+  cpp0x ?= 0
+  # include compiler-specific build configurations
+  -include $(tbb_root)/build/$(tbb_os).$(compiler).inc
+  ifdef extra_inc
+    -include $(tbb_root)/build/$(extra_inc)
+  endif
 endif
 ifneq ($(BUILDING_PHASE),1)
- # definitions for top-level Makefiles
- origin_build_dir:=$(origin tbb_build_dir)
- tbb_build_dir?=$(tbb_root)$(SLASH)build
- tbb_build_prefix?=$(tbb_os)_$(arch)_$(compiler)_$(runtime)
- work_dir=$(tbb_build_dir)$(SLASH)$(tbb_build_prefix)
- ifneq ($(BUILDING_PHASE),0)
-  work_dir:=$(work_dir)
-  # assign new value for tbb_root if path is not absolute (the filter keeps only /* paths)
-  ifeq ($(filter /% $(SLASH)%, $(subst :, ,$(tbb_root)) ),)
-   ifeq ($(origin_build_dir),undefined)
-    override tbb_root:=../..
-   else
-    override tbb_root:=$(CWD)/$(tbb_root)
-   endif
-  endif
-  export tbb_root
- endif # BUILDING_PHASE != 0
+  # definitions for top-level Makefiles
+  origin_build_dir:=$(origin tbb_build_dir)
+  tbb_build_dir?=$(tbb_root)$(SLASH)build
+  tbb_build_prefix?=$(tbb_os)_$(arch)_$(compiler)_$(runtime)
+  work_dir=$(tbb_build_dir)$(SLASH)$(tbb_build_prefix)
+  ifneq ($(BUILDING_PHASE),0)
+    work_dir:=$(work_dir)
+    # assign new value for tbb_root if path is not absolute (the filter keeps only /* paths)
+    ifeq ($(filter /% $(SLASH)%, $(subst :, ,$(tbb_root)) ),)
+      ifeq ($(origin_build_dir),undefined)
+        override tbb_root:=../..
+      else
+        override tbb_root:=$(CWD)/$(tbb_root)
+      endif
+    endif
+    export tbb_root
+  endif # BUILDING_PHASE != 0
 endif  # BUILDING_PHASE != 1
 
 .DELETE_ON_ERROR:    # Make will delete target if error occurred when building it.
-

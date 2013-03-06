@@ -42,34 +42,46 @@ ifeq (icc,$(compiler))
   endif
 endif
 
-ifndef arch
-        uname_m:=$(shell uname -m)
-        ifeq ($(uname_m),i686)
-                export arch:=ia32
-        endif
-        ifeq ($(uname_m),ia64)
-                export arch:=ia64
-        endif
-        ifeq ($(uname_m),x86_64)
-                export arch:=intel64
-        endif
-        ifeq ($(uname_m),sparc64)
-                export arch:=sparc
-        endif
-        ifndef arch
-                export arch:=$(uname_m)
-        endif
+ifndef runtime
+  export gcc_at=$(shell gcc --version | grep "Advance-Toolchain")
+  gcc_version_full=$(shell gcc --version | grep 'gcc'| egrep -o ' [0-9]+\.[0-9]+\.[0-9]+.*' | sed -e 's/^\ //')
+  gcc_version=$(shell echo "$(gcc_version_full)" | egrep -o '^[0-9]+\.[0-9]+\.[0-9]+\s*' | head -n 1 | sed -e 's/ *//g')
+  os_version:=$(shell uname -r)
+  os_kernel_version:=$(shell uname -r | sed -e 's/-.*$$//')
+  export os_glibc_version_full:=$(shell getconf GNU_LIBC_VERSION | grep glibc | sed -e 's/^glibc //')
+  os_glibc_version:=$(shell echo "$(os_glibc_version_full)" | sed -e '2,$$d' -e 's/-.*$$//')
+  export runtime:=cc$(gcc_version)_libc$(os_glibc_version)_kernel$(os_kernel_version)
 endif
 
-ifndef runtime
-        #gcc_version:=$(shell gcc -v 2>&1 | grep 'gcc --version' | sed -e 's/^gcc version //' | sed -e 's/ .*$$//')
-        gcc_version_full=$(shell gcc --version | grep 'gcc'| egrep -o ' [0-9]+\.[0-9]+\.[0-9]+.*' | sed -e 's/^\ //')
-        gcc_version=$(shell echo "$(gcc_version_full)" | egrep -o '^[0-9]+\.[0-9]+\.[0-9]+\s*' | head -n 1 | sed -e 's/ *//g')
-        os_version:=$(shell uname -r)
-        os_kernel_version:=$(shell uname -r | sed -e 's/-.*$$//')
-        export os_glibc_version_full:=$(shell getconf GNU_LIBC_VERSION | grep glibc | sed -e 's/^glibc //')
-        os_glibc_version:=$(shell echo "$(os_glibc_version_full)" | sed -e '2,$$d' -e 's/-.*$$//')
-        export runtime:=cc$(gcc_version)_libc$(os_glibc_version)_kernel$(os_kernel_version)
+ifndef arch
+  uname_m:=$(shell uname -m)
+  ifeq ($(uname_m),i686)
+    export arch:=ia32
+  endif
+  ifeq ($(uname_m),ia64)
+    export arch:=ia64
+  endif
+  ifeq ($(uname_m),x86_64)
+    export arch:=intel64
+  endif
+  ifeq ($(uname_m),sparc64)
+    export arch:=sparc
+  endif
+  ifeq ($(uname_m),ppc32)
+    export arch:=ppc32
+    ifndef gcc_at
+      export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
+    endif
+  endif
+  ifeq ($(uname_m),ppc64)
+    export arch:=ppc64
+    ifndef gcc_at
+      export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
+    endif
+  endif
+  ifndef arch
+    export arch:=$(uname_m)
+  endif
 endif
 
 native_compiler := gcc
@@ -87,9 +99,9 @@ MAKE_VERSIONS=sh $(tbb_root)/build/version_info_linux.sh $(CPLUS) $(CPLUS_FLAGS)
 MAKE_TBBVARS=sh $(tbb_root)/build/generate_tbbvars.sh
 
 ifdef LD_LIBRARY_PATH
-        export LD_LIBRARY_PATH := .:$(LD_LIBRARY_PATH)
+  export LD_LIBRARY_PATH := .:$(LD_LIBRARY_PATH)
 else
-        export LD_LIBRARY_PATH := .
+  export LD_LIBRARY_PATH := .
 endif
 
 ####### Build settings ########################################################
@@ -100,17 +112,17 @@ LIBEXT = so
 SONAME_SUFFIX =$(shell grep TBB_COMPATIBLE_INTERFACE_VERSION $(tbb_root)/include/tbb/tbb_stddef.h | egrep -o [0-9.]+)
 
 ifeq ($(arch),ia64)
-        def_prefix = lin64ipf
+  def_prefix = lin64ipf
 endif
 ifeq ($(arch),sparc)
-        def_prefix = lin64
+  def_prefix = lin64
 endif
 ifeq (,$(def_prefix))
-    ifeq (64,$(findstring 64,$(arch)))
-            def_prefix = lin64
-    else
-            def_prefix = lin32
-    endif
+  ifeq (64,$(findstring 64,$(arch)))
+    def_prefix = lin64
+  else
+    def_prefix = lin32
+  endif
 endif
 TBB.LST = $(tbb_root)/src/tbb/$(def_prefix)-tbb-export.lst
 TBB.DEF = $(TBB.LST:.lst=.def)

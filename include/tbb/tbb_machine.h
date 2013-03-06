@@ -76,7 +76,7 @@
     __TBB_machine_cmpswp4( volatile void *ptr, int32_t value, int32_t comparand )
         Must be provided if __TBB_USE_FENCED_ATOMICS is not set.
 
-    __TBB_machine_cmpswp8( volatile void *ptr, int32_t value, int64_t comparand )
+    __TBB_machine_cmpswp8( volatile void *ptr, int64_t value, int64_t comparand )
         Must be provided for 64-bit architectures if __TBB_USE_FENCED_ATOMICS is not set,
         and for 32-bit architectures if __TBB_64BIT_ATOMICS is set
 
@@ -131,12 +131,12 @@ template<size_t S> struct atomic_selector;
 
 template<> struct atomic_selector<1> {
     typedef int8_t word;
-    inline static word fetch_store ( volatile void* location, word value );
+    inline static word fetch_store(volatile void* location, word value);
 };
 
 template<> struct atomic_selector<2> {
     typedef int16_t word;
-    inline static word fetch_store ( volatile void* location, word value );
+    inline static word fetch_store(volatile void* location, word value);
 };
 
 template<> struct atomic_selector<4> {
@@ -146,21 +146,21 @@ template<> struct atomic_selector<4> {
 #else
     typedef int32_t word;
 #endif
-    inline static word fetch_store ( volatile void* location, word value );
+    inline static word fetch_store(volatile void* location, word value);
 };
 
 template<> struct atomic_selector<8> {
     typedef int64_t word;
-    inline static word fetch_store ( volatile void* location, word value );
+    inline static word fetch_store(volatile void* location, word value);
 };
 
 }} // namespaces internal, tbb
 
 #if _WIN32||_WIN64
 
-#ifdef _MANAGED
-#pragma managed(push, off)
-#endif
+	#ifdef _MANAGED
+		#pragma managed(push, off)
+	#endif
 
     #if __MINGW64__ || __MINGW32__
         extern "C" __declspec(dllimport) int __stdcall SwitchToThread( void );
@@ -180,9 +180,9 @@ template<> struct atomic_selector<8> {
         #include "machine/xbox360_ppc.h"
     #endif
 
-#ifdef _MANAGED
-#pragma managed(pop)
-#endif
+	#ifdef _MANAGED
+		#pragma managed(pop)
+	#endif
 
 #elif __linux__ || __FreeBSD__ || __NetBSD__
 
@@ -195,7 +195,7 @@ template<> struct atomic_selector<8> {
     #elif __ia64__
         #include "machine/linux_ia64.h"
     #elif __powerpc__
-        #include "machine/mac_ppc.h"
+        #include "machine/gcc_power.h"
     #elif __TBB_GCC_BUILTIN_ATOMICS_PRESENT
         #include "machine/gcc_generic.h"
     #endif
@@ -208,7 +208,7 @@ template<> struct atomic_selector<8> {
     #elif __x86_64__
         #include "machine/linux_intel64.h"
     #elif __POWERPC__
-        #include "machine/mac_ppc.h"
+        #include "machine/gcc_power.h"
     #endif
     #include "machine/macos_common.h"
 

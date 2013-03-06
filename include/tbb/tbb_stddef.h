@@ -101,11 +101,11 @@
 
 // Define preprocessor symbols used to determine architecture
 #if _WIN32||_WIN64
-#   if defined(_M_X64)||defined(__x86_64__)  // the latter for MinGW support
+#   if defined(_M_X64) || defined(__x86_64__)  // the latter for MinGW support
 #       define __TBB_x86_64 1
 #   elif defined(_M_IA64)
 #       define __TBB_ipf 1
-#   elif defined(_M_IX86)||defined(__i386__) // the latter for MinGW support
+#   elif defined(_M_IX86) || defined(__i386__) // the latter for MinGW support
 #       define __TBB_x86_32 1
 #   endif
 #else /* Assume generic Unix */
@@ -116,7 +116,7 @@
 #       define __TBB_x86_64 1
 #   elif __ia64__
 #       define __TBB_ipf 1
-#   elif __i386__||__i386  // __i386 is for Sun OS
+#   elif __i386__ || __i386  // __i386 is for Sun OS
 #       define __TBB_x86_32 1
 #   else
 #       define __TBB_generic_arch 1
@@ -175,7 +175,7 @@ namespace tbb {
     using std::ptrdiff_t;
 
     //! Type for an assertion handler
-    typedef void(*assertion_handler_type)( const char* filename, int line, const char* expression, const char * comment );
+    typedef void(*assertion_handler_type) (const char* filename, int line, const char* expression, const char * comment);
 
 #if TBB_USE_ASSERT
 
@@ -183,24 +183,24 @@ namespace tbb {
     /** If x is false, print assertion failure message.  
         If the comment argument is not NULL, it is printed as part of the failure message.  
         The comment argument has no other effect. */
-    #define __TBB_ASSERT(predicate,message) ((predicate)?((void)0):tbb::assertion_failure(__FILE__,__LINE__,#predicate,message))
+    #define __TBB_ASSERT(predicate, message) ((predicate)?((void)0):tbb::assertion_failure(__FILE__, __LINE__, #predicate, message))
     #define __TBB_ASSERT_EX __TBB_ASSERT
 
     //! Set assertion handler and return previous value of it.
-    assertion_handler_type __TBB_EXPORTED_FUNC set_assertion_handler( assertion_handler_type new_handler );
+    assertion_handler_type __TBB_EXPORTED_FUNC set_assertion_handler(assertion_handler_type new_handler);
 
     //! Process an assertion failure.
     /** Normally called from __TBB_ASSERT macro.
         If assertion handler is null, print message for assertion failure and abort.
         Otherwise call the assertion handler. */
-    void __TBB_EXPORTED_FUNC assertion_failure( const char* filename, int line, const char* expression, const char* comment );
+    void __TBB_EXPORTED_FUNC assertion_failure(const char* filename, int line, const char* expression, const char* comment);
 
 #else /* !TBB_USE_ASSERT */
 
     //! No-op version of __TBB_ASSERT.
-    #define __TBB_ASSERT(predicate,comment) ((void)0)
+    #define __TBB_ASSERT(predicate, comment) ((void)0)
     //! "Extended" version is useful to suppress warnings if a variable is only used with an assert
-    #define __TBB_ASSERT_EX(predicate,comment) ((void)(1 && (predicate)))
+    #define __TBB_ASSERT_EX(predicate, comment) ((void)(1 && (predicate)))
 
 #endif /* !TBB_USE_ASSERT */
 
@@ -283,34 +283,34 @@ void __TBB_EXPORTED_FUNC handle_perror( int error_code, const char* aux_info );
 #else /* !TBB_USE_EXCEPTIONS */
     inline bool __TBB_false() { return false; }
     #define __TBB_TRY
-    #define __TBB_CATCH(e) if ( tbb::internal::__TBB_false() )
+    #define __TBB_CATCH(e) if (tbb::internal::__TBB_false())
     #define __TBB_THROW(e) ((void)0)
     #define __TBB_RETHROW() ((void)0)
 #endif /* !TBB_USE_EXCEPTIONS */
 
 //! Report a runtime warning.
-void __TBB_EXPORTED_FUNC runtime_warning( const char* format, ... );
+void __TBB_EXPORTED_FUNC runtime_warning(const char* format, ...);
 
 #if TBB_USE_ASSERT
 static void* const poisoned_ptr = reinterpret_cast<void*>(-1);
 
 //! Set p to invalid pointer value.
 template<typename T>
-inline void poison_pointer( T*& p ) { p = reinterpret_cast<T*>(poisoned_ptr); }
+inline void poison_pointer(T*& p) { p = reinterpret_cast<T*>(poisoned_ptr); }
 
 /** Expected to be used in assertions only, thus no empty form is defined. **/
 template<typename T>
-inline bool is_poisoned( T* p ) { return p == reinterpret_cast<T*>(poisoned_ptr); }
+inline bool is_poisoned(T* p) { return p == reinterpret_cast<T*>(poisoned_ptr); }
 #else
 template<typename T>
-inline void poison_pointer( T* ) {/*do nothing*/}
+inline void poison_pointer(T*) {/*do nothing*/}
 #endif /* !TBB_USE_ASSERT */
 
 //! Cast pointer from U* to T.
 /** This method should be used sparingly as a last resort for dealing with 
     situations that inherently break strict ISO C++ aliasing rules. */
 template<typename T, typename U> 
-inline T punned_cast( U* ptr ) {
+inline T punned_cast(U* ptr) {
     uintptr_t x = reinterpret_cast<uintptr_t>(ptr);
     return reinterpret_cast<T>(x);
 }
@@ -318,7 +318,7 @@ inline T punned_cast( U* ptr ) {
 //! Base class for types that should not be assigned.
 class no_assign {
     // Deny assignment
-    void operator=( const no_assign& );
+    void operator=(const no_assign&);
 public:
 #if __GNUC__
     //! Explicitly define default construction, because otherwise gcc issues gratuitous warning.
@@ -329,7 +329,7 @@ public:
 //! Base class for types that should not be copied or assigned.
 class no_copy: no_assign {
     //! Deny copy construction
-    no_copy( const no_copy& );
+    no_copy(const no_copy&);
 public:
     //! Allow default construction
     no_copy() {}

@@ -58,46 +58,50 @@ ifeq ($(cfg), debug)
 endif
 
 ifneq (0,$(cpp0x))
-    CXX_ONLY_FLAGS = -std=c++0x
+  CXX_ONLY_FLAGS = -std=c++0x
 endif
 
 TBB_ASM.OBJ=
 MALLOC_ASM.OBJ=
 
 ifeq (ia64,$(arch))
-# Position-independent code (PIC) is a must on IA-64, even for regular (not shared) executables
-    CPLUS_FLAGS += $(PIC_KEY)
+  # Position-independent code (PIC) is a must on IA-64, even for regular (not shared) executables
+  CPLUS_FLAGS += $(PIC_KEY)
 endif
 
 ifeq (intel64,$(arch))
-    CPLUS_FLAGS += -m64
-    LIB_LINK_FLAGS += -m64
+  CPLUS_FLAGS += -m64
+  LIB_LINK_FLAGS += -m64
 endif
 
 ifeq (ia32,$(arch))
-    CPLUS_FLAGS += -m32 -march=pentium4
-    LIB_LINK_FLAGS += -m32
-endif
-
-ifeq (ppc64,$(arch))
-    CPLUS_FLAGS += -m64
-    LIB_LINK_FLAGS += -m64
+  CPLUS_FLAGS += -m32 -march=pentium4
+  LIB_LINK_FLAGS += -m32
 endif
 
 ifeq (ppc32,$(arch))
-    CPLUS_FLAGS += -m32
+  ifndef gcc_at
+    CPLUS_FLAGS += -m32 -mcpu=$(ppc_cpu) -mtune=$(ppc_cpu) -D__powerpc32__
     LIB_LINK_FLAGS += -m32
+  endif
+endif
+
+ifeq (ppc64,$(arch))
+  ifndef gcc_at
+    CPLUS_FLAGS += -m64 -mcpu=$(ppc_cpu) -mtune=$(ppc_cpu) -D__powerpc64__
+    LIB_LINK_FLAGS += -m64
+  endif
 endif
 
 ifeq (bgp,$(arch))
-    CPLUS = mpicxx
-    CONLY = mpicc
+  CPLUS = mpicxx
+  CONLY = mpicc
 endif
 
 # for some gcc versions on Solaris, -m64 may imply V9, but perhaps not everywhere (TODO: verify)
 ifeq (sparc,$(arch))
-    CPLUS_FLAGS    += -mcpu=v9 -m64
-    LIB_LINK_FLAGS += -mcpu=v9 -m64
+  CPLUS_FLAGS    += -mcpu=v9 -m64
+  LIB_LINK_FLAGS += -mcpu=v9 -m64
 endif
 
 #------------------------------------------------------------------------------
@@ -105,20 +109,20 @@ endif
 #------------------------------------------------------------------------------
 ASM = as
 ifeq (intel64,$(arch))
-    ASM_FLAGS += --64
+  ASM_FLAGS += --64
 endif
 ifeq (ia32,$(arch))
-    ASM_FLAGS += --32
+  ASM_FLAGS += --32
 endif
 ifeq ($(cfg),debug)
-    ASM_FLAGS += -g
+  ASM_FLAGS += -g
 endif
 
 ASSEMBLY_SOURCE=$(arch)-gas
 ifeq (ia64,$(arch))
-    ASM_FLAGS += -xexplicit
-    TBB_ASM.OBJ += atomic_support.o lock_byte.o log2.o pause.o ia64_misc.o
-    MALLOC_ASM.OBJ += atomic_support.o lock_byte.o pause.o log2.o
+  ASM_FLAGS += -xexplicit
+  TBB_ASM.OBJ += atomic_support.o lock_byte.o log2.o pause.o ia64_misc.o
+  MALLOC_ASM.OBJ += atomic_support.o lock_byte.o pause.o log2.o
 endif
 #------------------------------------------------------------------------------
 # End of setting assembler data.
