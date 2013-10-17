@@ -76,7 +76,12 @@
     #endif
 #endif
 
-#define __TBB_BIG_ENDIAN 1
+// Define endianess on power architecture ,since processor is bi-endian.
+#if __LITTLE_ENDIAN__
+    #define __TBB_BIG_ENDIAN 0
+#else
+    #define __TBB_BIG_ENDIAN 1
+#endif
 
 inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t comparand) {
 	uint8_t result, temporary;

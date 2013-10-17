@@ -79,6 +79,12 @@ ifndef arch
       export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
     endif
   endif
+  ifeq ($(uname_m),ppc64le)
+    export arch:=ppc64
+    ifndef gcc_at
+      export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
+    endif
+  endif
   ifndef arch
     export arch:=$(uname_m)
   endif
