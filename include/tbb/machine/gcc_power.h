@@ -85,8 +85,13 @@
 
 inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t comparand) {
 	uint8_t result, temporary;
+	#if __LITTLE_ENDIAN__
+	int offset = (long int)ptr & 0x3,
+		maskoff = (offset == 0) ? 0xffffff00 : (offset == 1) ? 0xffff00ff : (offset == 2) ? 0xff00ffff : 0x00ffffff;
+	#else
 	int offset = (long int)ptr & 0x3,
 		maskoff = (offset == 0) ? 0x00ffffff : (offset == 1) ? 0xff00ffff : (offset == 2) ? 0xffff00ff : 0xffffff00;
+	#endif
 
 	__asm__ __volatile__("lwsync\n"
 						 "0:\n\t"								/* ==> retry loop */
