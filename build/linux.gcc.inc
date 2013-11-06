@@ -89,6 +89,9 @@ endif
 ifeq (ppc64,$(arch))
   ifndef gcc_at
     CPLUS_FLAGS += -m64 -mcpu=$(ppc_cpu) -mtune=$(ppc_cpu) -D__powerpc64__
+    ifdef ppc64le
+      CPLUS_FLAGS += -mvsx
+    endif
     LIB_LINK_FLAGS += -m64
   endif
 endif
