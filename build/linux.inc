@@ -42,6 +42,16 @@ ifeq (icc,$(compiler))
   endif
 endif
 
+ifndef runtime
+        export gcc_at=$(shell gcc --version | grep "Advance-Toolchain")
+        gcc_version = $(shell gcc -dumpversion)
+        os_version:=$(shell uname -r)
+        os_kernel_version:=$(shell uname -r | sed -e 's/-.*$$//')
+        export os_glibc_version_full:=$(shell getconf GNU_LIBC_VERSION | grep glibc | sed -e 's/^glibc //')
+        os_glibc_version:=$(shell echo "$(os_glibc_version_full)" | sed -e '2,$$d' -e 's/-.*$$//')
+        export runtime:=cc$(gcc_version)_libc$(os_glibc_version)_kernel$(os_kernel_version)
+endif
+
 ifndef arch
         uname_m:=$(shell uname -m)
         ifeq ($(uname_m),i686)
@@ -56,21 +66,24 @@ ifndef arch
         ifeq ($(uname_m),sparc64)
                 export arch:=sparc
         endif
+        ifeq ($(uname_m),ppc32)
+                export arch := ppc32
+                ifeq ($(gcc_at),)
+                        export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
+                endif
+        endif
+        ifeq ($(uname_m),$(filter $(uname_u),ppc64 ppc64le))
+                export arch := ppc64
+                ifeq ($(gcc_at),)
+                        export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
+                endif
+        endif
         ifeq ($(uname_m),armv71)
                 export arch :=armv7
         endif
         ifndef arch
                 export arch:=$(uname_m)
         endif
-endif
-
-ifndef runtime
-        gcc_version = $(shell gcc -dumpversion)
-        os_version:=$(shell uname -r)
-        os_kernel_version:=$(shell uname -r | sed -e 's/-.*$$//')
-        export os_glibc_version_full:=$(shell getconf GNU_LIBC_VERSION | grep glibc | sed -e 's/^glibc //')
-        os_glibc_version:=$(shell echo "$(os_glibc_version_full)" | sed -e '2,$$d' -e 's/-.*$$//')
-        export runtime:=cc$(gcc_version)_libc$(os_glibc_version)_kernel$(os_kernel_version)
 endif
 
 native_compiler := gcc
