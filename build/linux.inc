@@ -68,15 +68,9 @@ ifndef arch
         endif
         ifeq ($(uname_m),ppc32)
                 export arch := ppc32
-                ifeq ($(gcc_at),)
-                        export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
-                endif
         endif
         ifeq ($(uname_m),$(filter $(uname_u),ppc64 ppc64le))
                 export arch := ppc64
-                ifeq ($(gcc_at),)
-                        export ppc_cpu:=$(shell cat /proc/cpuinfo | grep cpu | head -n 1 | sed -e 's/^cpu.*: //' | sed -e 's/ .*$$//' | tr '[:upper:]' '[:lower:]' | cut -f1 -d" " -)
-                endif
         endif
         ifeq ($(uname_m),armv71)
                 export arch :=armv7

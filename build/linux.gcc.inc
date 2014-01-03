@@ -95,7 +95,7 @@ endif
 ifeq (ppc64,$(arch))
     CPLUS_FLAGS += -m64
     ifndef gcc_at
-        CPLUS_FLAGS += -mcpu=$(ppc_cpu) -mtune=$(ppc_cpu) -D__powerpc64__
+        CPLUS_FLAGS += -D__powerpc64__
     endif
     LIB_LINK_FLAGS += -m64
 endif
@@ -103,7 +103,7 @@ endif
 ifeq (ppc32,$(arch))
     CPLUS_FLAGS += -m32
     ifndef gcc_at
-        CPLUS_FLAGS += -mcpu=$(ppc_cpu) -mtune=$(ppc_cpu) -D__powerpc32__
+        CPLUS_FLAGS += -D__powerpc32__
     endif
     LIB_LINK_FLAGS += -m32
 endif
