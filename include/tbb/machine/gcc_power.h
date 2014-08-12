@@ -76,14 +76,26 @@
     #endif
 #endif
 
-#define __TBB_BIG_ENDIAN 1
+#if __BIG_ENDIAN__
+    #define __TBB_BIG_ENDIAN 1
+#else
+    #define __TBB_BIG_ENDIAN 0
+#endif
 
 inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t comparand) {
 	uint8_t result, temporary;
 	int offset = (long int)ptr & 0x3,
-		maskoff = (offset == 0) ? 0x00ffffff : (offset == 1) ? 0xff00ffff : (offset == 2) ? 0xffff00ff : 0xffffff00;
+	#if __BIG_ENDIAN__
+		maskoff = (offset == 0) ? 0x00ffffff :
+				  (offset == 1) ? 0xff00ffff :
+				  (offset == 2) ? 0xffff00ff : 0xffffff00;
+	#else
+		maskoff = (offset == 0) ? 0xffffff00 :
+				  (offset == 1) ? 0xffff00ff :
+				  (offset == 2) ? 0xff00ffff : 0x00ffffff;
+	#endif
 
-	__asm__ __volatile__("lwsync\n"
+	__asm__ __volatile__("sync\n"
 						 "0:\n\t"								/* ==> retry loop */
 						 "lwarx %[res], 0, %[ptr]\n\t"			/* load w/ reservation */
 						 "mr %[tmp], %[res]\n\t"				/* keep a copy for later use */
@@ -135,7 +147,7 @@ inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t 
 						 "bne- 0b\n"							/* retry if reservation lost */
 
 						 "6:\n\t"								/* ==> Exit */
-						 "lwsync"								/* lightweight sync */
+						 "isync"									/* lightweight sync */
 						 : [res]"=&r"(result)					/* value retrieved from address + offset */
 						 , [tmp]"=&r"(temporary)				/* temporary data holder */
 						 : [ptr]"r"((void *)((long int)ptr & 0xFFFFFFFFFFFFFFFC))	/* aligned access address */
@@ -153,7 +165,7 @@ inline int16_t __TBB_machine_cmpswp2(volatile void *ptr, int16_t value, int16_t 
 	int16_t result, temporary;
 	int offset = (long int)ptr & 0x3;
 
-	__asm__ __volatile__("lwsync\n"
+	__asm__ __volatile__("sync\n"
 						 "0:\n\t"								/* ==> retry loop */
 						 "lwarx %[res], 0, %[ptr]\n\t"			/* load w/ reservation */
 						 "mr %[tmp], %[res]\n\t"				/* keep a copy for later use */
@@ -181,7 +193,7 @@ inline int16_t __TBB_machine_cmpswp2(volatile void *ptr, int16_t value, int16_t 
 						 "bne- 0b\n"							/* retry if reservation lost */
 
 						 "4:\n\t"								/* ==> Exit */
-						 "lwsync"								/* lightweight sync */
+						 "isync"									/* lightweight sync */
 						 : [res]"=&r"(result)					/* value retrieved from address + offset */
 						 , [tmp]"=&r"(temporary)				/* temporary data holder */
 						 : [ptr]"r"((void *)((long int)ptr & 0xFFFFFFFFFFFFFFFC))	/* aligned access address */
@@ -197,7 +209,7 @@ inline int16_t __TBB_machine_cmpswp2(volatile void *ptr, int16_t value, int16_t 
 inline int32_t __TBB_machine_cmpswp4(volatile void *ptr, int32_t value, int32_t comparand) {
     int32_t result;
 
-    __asm__ __volatile__("lwsync\n"
+    __asm__ __volatile__("sync\n"
                          "0:\n\t"
                          "lwarx %[res], 0, %[ptr]\n\t"			/* load w/ reservation */
                          "cmpw %[cmp], %[res]\n\t"				/* compare against comparand */
@@ -205,7 +217,7 @@ inline int32_t __TBB_machine_cmpswp4(volatile void *ptr, int32_t value, int32_t 
                          "stwcx. %[val], 0, %[ptr]\n\t"			/* store new value */
                          "bne- 0b\n"							/* retry if reservation lost */
                          "1:\n\t"								/* the exit */
-                         "lwsync"
+                         "isync"
                          : [res]"=&r"(result)
                          , "+m"(* (int32_t*) ptr)				/* redundant with "memory" */
                          : [ptr]"r"(ptr)
@@ -222,7 +234,7 @@ inline int32_t __TBB_machine_cmpswp4(volatile void *ptr, int32_t value, int32_t 
 inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t comparand) {
     int64_t result;
 
-    __asm__ __volatile__("lwsync\n"
+    __asm__ __volatile__("sync\n"
                          "0:\n\t"
                          "ldarx %[res], 0, %[ptr]\n\t"			/* load w/ reservation */
                          "cmpd %[cmp], %[res]\n\t"				/* compare against comparand */
@@ -230,7 +242,7 @@ inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t 
                          "stdcx. %[val], 0, %[ptr]\n\t"			/* store new value */
                          "bne- 0b\n"							/* retry if reservation lost */
                          "1:\n\t"								/* the exit */
-                         "lwsync"
+                         "isync"
                          : [res]"=&r"(result)
                          , "+m"(* (int64_t*) ptr)				/* redundant with "memory" */
                          : [ptr]"r"(ptr)
@@ -247,7 +259,7 @@ inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t 
 inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t comparand) {
 	int64_t result;
 	int64_t value_register, comparand_register, result_register; // dummy variables to allocate registers
-	__asm__ __volatile__("lwsync\n\t"
+	__asm__ __volatile__("sync\n\t"
 						 "ld %[val], %[valm]\n\t"
 						 "ld %[cmp], %[cmpm]\n"
 						 "0:\n\t"
@@ -258,7 +270,7 @@ inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t 
 						 "bne- 0b\n"					 /* retry if reservation lost */
 						 "1:\n\t"						 /* the exit */
 						 "std %[res], %[resm]\n\t"
-						 "lwsync"
+						 "isync"
 						 : [resm]"=m"(result)
 						 , [res] "=&r"(result_register)
 						 , [val] "=&r"(value_register)
@@ -284,7 +296,7 @@ inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t 
                                  "0:\n\t"                                                                     \
                                  cmpx " %[res], %[res]\n\t"                                                   \
                                  "bne- 0b\n\t"                                                                \
-                                 "lwsync"                                                                     \
+                                 "isync"                                                                      \
                                  : [res]"=r"(result)                                                          \
                                  : [ptr]"b"(&location) /* cannot use register 0 here */                       \
                                  , "m"(location)       /* redundant with "memory" */                          \
@@ -342,7 +354,7 @@ namespace internal {
                                  "0:\n\t"
                                  "cmpd %[res], %[res]\n\t"
                                  "bne- 0b\n\t"
-                                 "lwsync"
+                                 "isync"
                                  : [resm]"=m"(result)
                                  , [res]"=&r"(result_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
