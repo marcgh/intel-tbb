@@ -35,13 +35,15 @@
 #include <stdint.h>
 #include <unistd.h>
 
-// TODO: rename to gcc_power.h?
-// This file is for Power Architecture with compilers supporting GNU inline-assembler syntax (currently GNU g++ and IBM XL).
-// Note that XL V9.0 (sometimes?) has trouble dealing with empty input and/or clobber lists, so they should be avoided.
+// This file is for Power Architecture with compilers supporting GNU inline-assembler syntax
+// (currently GNU g++ and IBM XL).
+// Note that XL V9.0 (sometimes?) has trouble dealing with empty input and/or clobber lists,
+// so they should be avoided.
 
 #if __powerpc64__ || __ppc64__
     // IBM XL documents __powerpc64__ (and __PPC64__).
-    // Apple documents __ppc64__ (with __ppc__ only on 32-bit).
+    // Apple GCC documents __ppc64__ (with __ppc__ only on 32-bit).
+    // GNU GCC (standard one, as well as Advance Toolchain) documents __powerpc64__ (and __PPC64__).
     #define __TBB_WORDSIZE 8
 #else
     #define __TBB_WORDSIZE 4
@@ -78,80 +80,217 @@
     // Alternatively (but only for the current architecture and TBB version),
     // override the default as a predefined macro when invoking the compiler.
     #ifndef __TBB_64BIT_ATOMICS
-    #define __TBB_64BIT_ATOMICS 0
+        #define __TBB_64BIT_ATOMICS 0
     #endif
 #endif
 
-inline int32_t __TBB_machine_cmpswp4 (volatile void *ptr, int32_t value, int32_t comparand )
-{
+inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t comparand) {
+    uint8_t result, temporary;
+    int offset = (long int)ptr & 0x3,
+    #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
+        maskoff = (offset == 0) ? 0x00ffffff :
+                  (offset == 1) ? 0xff00ffff :
+                  (offset == 2) ? 0xffff00ff : 0xffffff00;
+    #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
+        maskoff = (offset == 0) ? 0xffffff00 :
+                  (offset == 1) ? 0xffff00ff :
+                  (offset == 2) ? 0xff00ffff : 0x00ffffff;
+    #else
+        #error "Unsupported endianess found... Aborting!"
+    #endif
+
+    __asm__ __volatile__("sync\n"
+                         "0:\n\t"                               /* ==> retry loop */
+                         "lwarx %[res], 0, %[ptr]\n\t"          /* load w/ reservation */
+                         "mr %[tmp], %[res]\n\t"                /* keep a copy for later use */
+                         #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
+                         "cmpwi %[off], 0\n\t"                  /* if BE offset is 0 (shift 24) */
+                         "beq 2f\n\t"                           /* go to shift24 */
+                         "cmpwi %[off], 1\n\t"                  /* if BE offset is 1 (shift 16) */
+                         "beq 3f\n\t"                           /* go to shift16 */
+                         "cmpwi %[off], 2\n\t"                  /* if BE offset is 2 (shift 8) */
+                         "beq 4f\n"                             /* go to shift8 */
+                         #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
+                         "cmpwi %[off], 3\n\t"                  /* if LE offset is 3 (shift 24) */
+                         "beq 2f\n\t"                           /* go to shift24 */
+                         "cmpwi %[off], 2\n\t"                  /* if LE offset is 2 (shift 16) */
+                         "beq 4f\n\t"                           /* go to shift16 */
+                         "cmpwi %[off], 1\n\t"                  /* if LE offset is 1 (shift 8) */
+                         "beq 4f\n"                             /* go to shift8 */
+                         #endif
+
+                         "1:\n\t"                               /* ==> Rightmost byte to work on (noshift0) */
+                         "andi. %[res], %[res], 0xff\n\t"       /* clean up retrieved value (no shift needed) */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 6f\n\t"                          /* exit if not same (** dup **) */
+                         "and %[tmp], %[tmp], %[msk]\n\t"       /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n\t"        /* combine original value with new one for storage */
+                         "b 5f\n"                               /* step right into storage */
+
+                         "2:\n\t"                               /* ==> Leftmost byte to work on (shift24) */
+                         "srwi %[res], %[res], 24\n\t"          /* perform required shift */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 6f\n\t"                          /* exit if not same (** dup **) */
+                         "slwi %[val], %[val], 24\n\t"          /* rotate new value to proper position in word */
+                         "and %[tmp], %[tmp], %[msk]\n\t"       /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n\t"        /* combine original value with new one for storage */
+                         "b 5f\n"                               /* step right into storage */
+
+                         "3:\n\t"                               /* ==> Middle left byte to work on (shift16) */
+                         "andc %[res], %[res], %[msk]\n\t"      /* clean everything except requested byte value */
+                         "srwi %[res], %[res], 16\n\t"          /* otherwise perform required shift */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 6f\n\t"                          /* exit if not same (** dup **) */
+                         "slwi %[val], %[val], 16\n\t"          /* rotate new value to proper position in word */
+                         "and %[tmp], %[tmp], %[msk]\n\t"       /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n\t"        /* combine original value with new one for storage */
+                         "b 5f\n"                               /* step right into storage */
+
+                         "4:\n\t"                               /* ==> Middle right byte to work on (shift8) */
+                         "andc %[res], %[res], %[msk]\n\t"      /* clean everything except requested byte value */
+                         "srwi %[res], %[res], 8\n\t"           /* otherwise perform required shift */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 6f\n\t"                          /* exit if not same (** dup **) */
+                         "slwi %[val], %[val], 8\n\t"           /* rotate new value to proper position in word */
+                         "and %[tmp], %[tmp], %[msk]\n\t"       /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n"          /* combine original value with new one for storage */
+
+                         "5:\n\t"                               /* ==> Storage steps (storage8) */
+                         "stwcx. %[val], 0, %[ptr]\n\t"         /* store new value */
+                         "bne- 0b\n"                            /* retry if reservation lost */
+
+                         "6:\n\t"                               /* ==> Exit */
+                         "isync"                                /* lightweight sync */
+                         : [res]"=&r"(result)                   /* value retrieved from address + offset */
+                         , [tmp]"=&r"(temporary)                /* temporary data holder */
+                         : [ptr]"r"((void *)((long int)ptr & 0xFFFFFFFFFFFFFFFC))   /* aligned access address */
+                         , [off]"r"(offset)                     /* aligned data offset */
+                         , [val]"r"(value)                      /* value to replace */
+                         , [cmp]"r"(comparand)                  /* value to compare against */
+                         , [msk]"r"(maskoff)                    /* mask to use for isolation */
+                         : "memory"                             /* compiler full fence */
+                         , "cr0"                                /* clobbered by cmpw and/or stwcx. */
+                         );
+    return result;
+}
+
+inline int16_t __TBB_machine_cmpswp2(volatile void *ptr, int16_t value, int16_t comparand) {
+    int16_t result, temporary;
+    int offset = (long int)ptr & 0x3;
+
+    __asm__ __volatile__("sync\n"
+                         "0:\n\t"                               /* ==> retry loop */
+                         "lwarx %[res], 0, %[ptr]\n\t"          /* load w/ reservation */
+                         "mr %[tmp], %[res]\n\t"                /* keep a copy for later use */
+                         #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
+                         "cmpwi %[off], 2\n\t"                  /* if BE offset is 2 (not 0) */
+                         #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
+                         "cmpwi %[off], 0\n\t"                  /* if LE offset os 0 (not 2) */
+                         #endif
+                         "beq 2f\n"                             /* go to no shift parameters */
+
+                         "1:\n\t"                               /* ==> Leftmost half-word to work on (shift16) */
+                         "srwi %[res], %[res], 16\n\t"          /* perform required shift */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 4f\n\t"                          /* exit if not same (** dup **) */
+                         "slwi %[val], %[val], 16\n\t"          /* shift new value to proper position in word */
+                         "andi. %[tmp], %[tmp], 0xffff\n\t"     /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n\t"        /* combine original value with new one for storage */
+                         "b 3f\n"                               /* step right into storage */
+
+                         "2:\n\t"                               /* ==> Rightmost half-word to work on (noshift) */
+                         "andi. %[res], %[res], 0xffff\n\t"     /* clean up retrieved value */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 4f\n\t"                          /* exit if not same (** dup **) */
+                         "andis. %[tmp], %[tmp], 0xffff\n\t"    /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n"          /* combine original value with new one for storage */
+
+                         "3:\n\t"                               /* ==> Storage steps (storage) */
+                         "stwcx. %[val], 0, %[ptr]\n\t"         /* store new value */
+                         "bne- 0b\n"                            /* retry if reservation lost */
+
+                         "4:\n\t"                               /* ==> Exit */
+                         "isync"                                /* lightweight sync */
+                         : [res]"=&r"(result)                   /* value retrieved from address + offset */
+                         , [tmp]"=&r"(temporary)                /* temporary data holder */
+                         : [ptr]"r"((void *)((long int)ptr & 0xFFFFFFFFFFFFFFFC))   /* aligned access address */
+                         , [off]"r"(offset)                     /* aligned data offset */
+                         , [val]"r"(value)                      /* value to replace */
+                         , [cmp]"r"(comparand)                  /* value to compare against */
+                         : "memory"                             /* compiler full fence */
+                         , "cr0"                                /* clobbered by cmpw and/or stwcx. */
+                         );
+    return result;
+}
+
+inline int32_t __TBB_machine_cmpswp4(volatile void *ptr, int32_t value, int32_t comparand) {
     int32_t result;
 
     __asm__ __volatile__("sync\n"
                          "0:\n\t"
-                         "lwarx %[res],0,%[ptr]\n\t"     /* load w/ reservation */
-                         "cmpw %[res],%[cmp]\n\t"        /* compare against comparand */
-                         "bne- 1f\n\t"                   /* exit if not same */
-                         "stwcx. %[val],0,%[ptr]\n\t"    /* store new value */
-                         "bne- 0b\n"                     /* retry if reservation lost */
-                         "1:\n\t"                        /* the exit */
+                         "lwarx %[res], 0, %[ptr]\n\t"          /* load w/ reservation */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand */
+                         "bne- 1f\n\t"                          /* exit if not same */
+                         "stwcx. %[val], 0, %[ptr]\n\t"         /* store new value */
+                         "bne- 0b\n"                            /* retry if reservation lost */
+                         "1:\n\t"                               /* the exit */
                          "isync"
                          : [res]"=&r"(result)
-                         , "+m"(* (int32_t*) ptr)        /* redundant with "memory" */
+                         , "+m"(* (int32_t*) ptr)               /* redundant with "memory" */
                          : [ptr]"r"(ptr)
                          , [val]"r"(value)
                          , [cmp]"r"(comparand)
-                         : "memory"                      /* compiler full fence */
-                         , "cr0"                         /* clobbered by cmp and/or stwcx. */
+                         : "memory"                             /* compiler full fence */
+                         , "cr0"                                /* clobbered by cmpx and/or strx. */
                          );
     return result;
-}
+};
 
 #if __TBB_WORDSIZE==8
 
-inline int64_t __TBB_machine_cmpswp8 (volatile void *ptr, int64_t value, int64_t comparand )
-{
+inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t comparand) {
     int64_t result;
+
     __asm__ __volatile__("sync\n"
                          "0:\n\t"
-                         "ldarx %[res],0,%[ptr]\n\t"     /* load w/ reservation */
-                         "cmpd %[res],%[cmp]\n\t"        /* compare against comparand */
-                         "bne- 1f\n\t"                   /* exit if not same */
-                         "stdcx. %[val],0,%[ptr]\n\t"    /* store new value */
-                         "bne- 0b\n"                     /* retry if reservation lost */
-                         "1:\n\t"                        /* the exit */
+                         "ldarx %[res], 0, %[ptr]\n\t"          /* load w/ reservation */
+                         "cmpd %[cmp], %[res]\n\t"              /* compare against comparand */
+                         "bne- 1f\n\t"                          /* exit if not same */
+                         "stdcx. %[val], 0, %[ptr]\n\t"         /* store new value */
+                         "bne- 0b\n"                            /* retry if reservation lost */
+                         "1:\n\t"                               /* the exit */
                          "isync"
                          : [res]"=&r"(result)
-                         , "+m"(* (int64_t*) ptr)        /* redundant with "memory" */
+                         , "+m"(* (int64_t*) ptr)               /* redundant with "memory" */
                          : [ptr]"r"(ptr)
                          , [val]"r"(value)
                          , [cmp]"r"(comparand)
-                         : "memory"                      /* compiler full fence */
-                         , "cr0"                         /* clobbered by cmp and/or stdcx. */
+                         : "memory"                             /* compiler full fence */
+                         , "cr0"                                /* clobbered by cmpx and/or strx. */
                          );
     return result;
-}
+};
 
 #elif __TBB_64BIT_ATOMICS /* && __TBB_WORDSIZE==4 */
 
-inline int64_t __TBB_machine_cmpswp8 (volatile void *ptr, int64_t value, int64_t comparand )
-{
+inline int64_t __TBB_machine_cmpswp8(volatile void *ptr, int64_t value, int64_t comparand) {
     int64_t result;
     int64_t value_register, comparand_register, result_register; // dummy variables to allocate registers
     __asm__ __volatile__("sync\n\t"
-                         "ld %[val],%[valm]\n\t"
-                         "ld %[cmp],%[cmpm]\n"
+                         "ld %[val], %[valm]\n\t"
+                         "ld %[cmp], %[cmpm]\n"
                          "0:\n\t"
-                         "ldarx %[res],0,%[ptr]\n\t"     /* load w/ reservation */
-                         "cmpd %[res],%[cmp]\n\t"        /* compare against comparand */
+                         "ldarx %[res], 0, %[ptr]\n\t"   /* load w/ reservation */
+                         "cmpd %[cmp], %[res]\n\t"       /* compare against comparand */
                          "bne- 1f\n\t"                   /* exit if not same */
-                         "stdcx. %[val],0,%[ptr]\n\t"    /* store new value */
+                         "stdcx. %[val], 0, %[ptr]\n\t"  /* store new value */
                          "bne- 0b\n"                     /* retry if reservation lost */
                          "1:\n\t"                        /* the exit */
-                         "std %[res],%[resm]\n\t"
+                         "std %[res], %[resm]\n\t"
                          "isync"
                          : [resm]"=m"(result)
-                         , [res] "=&r"(   result_register)
-                         , [val] "=&r"(    value_register)
+                         , [res] "=&r"(result_register)
+                         , [val] "=&r"(value_register)
                          , [cmp] "=&r"(comparand_register)
                          , "+m"(* (int64_t*) ptr)        /* redundant with "memory" */
                          : [ptr] "r"(ptr)
@@ -165,30 +304,32 @@ inline int64_t __TBB_machine_cmpswp8 (volatile void *ptr, int64_t value, int64_t
 
 #endif /* __TBB_WORDSIZE==4 && __TBB_64BIT_ATOMICS */
 
-#define __TBB_MACHINE_DEFINE_LOAD_STORE(S,ldx,stx,cmpx)                                                       \
+#define __TBB_MACHINE_DEFINE_LOAD_STORE(S, ldx, stx, cmpx)                                                    \
     template <typename T>                                                                                     \
     struct machine_load_store<T,S> {                                                                          \
         static inline T load_with_acquire(const volatile T& location) {                                       \
             T result;                                                                                         \
-            __asm__ __volatile__(ldx " %[res],0(%[ptr])\n"                                                    \
+            __asm__ __volatile__(ldx " %[res], 0(%[ptr])\n"                                                   \
                                  "0:\n\t"                                                                     \
-                                 cmpx " %[res],%[res]\n\t"                                                    \
+                                 cmpx " %[res], %[res]\n\t"                                                   \
                                  "bne- 0b\n\t"                                                                \
                                  "isync"                                                                      \
                                  : [res]"=r"(result)                                                          \
                                  : [ptr]"b"(&location) /* cannot use register 0 here */                       \
                                  , "m"(location)       /* redundant with "memory" */                          \
                                  : "memory"            /* compiler acquire fence */                           \
-                                 , "cr0"               /* clobbered by cmpw/cmpd */);                         \
+                                 , "cr0"               /* clobbered by cmpw/cmpd */                           \
+                                 );                                                                           \
             return result;                                                                                    \
         }                                                                                                     \
         static inline void store_with_release(volatile T &location, T value) {                                \
             __asm__ __volatile__("lwsync\n\t"                                                                 \
-                                 stx " %[val],0(%[ptr])"                                                      \
+                                 stx " %[val], 0(%[ptr])"                                                     \
                                  : "=m"(location)      /* redundant with "memory" */                          \
                                  : [ptr]"b"(&location) /* cannot use register 0 here */                       \
                                  , [val]"r"(value)                                                            \
-                                 : "memory"/*compiler release fence*/ /*(cr0 not affected)*/);                \
+                                 : "memory"/*compiler release fence*/ /*(cr0 not affected)*/                  \
+                                 );                                                                           \
         }                                                                                                     \
     };                                                                                                        \
                                                                                                               \
@@ -196,7 +337,7 @@ inline int64_t __TBB_machine_cmpswp8 (volatile void *ptr, int64_t value, int64_t
     struct machine_load_store_relaxed<T,S> {                                                                  \
         static inline T load (const __TBB_atomic T& location) {                                               \
             T result;                                                                                         \
-            __asm__ __volatile__(ldx " %[res],0(%[ptr])"                                                      \
+            __asm__ __volatile__(ldx " %[res], 0(%[ptr])"                                                     \
                                  : [res]"=r"(result)                                                          \
                                  : [ptr]"b"(&location) /* cannot use register 0 here */                       \
                                  , "m"(location)                                                              \
@@ -204,7 +345,7 @@ inline int64_t __TBB_machine_cmpswp8 (volatile void *ptr, int64_t value, int64_t
             return result;                                                                                    \
         }                                                                                                     \
         static inline void store (__TBB_atomic T &location, T value) {                                        \
-            __asm__ __volatile__(stx " %[val],0(%[ptr])"                                                      \
+            __asm__ __volatile__(stx " %[val], 0(%[ptr])"                                                     \
                                  : "=m"(location)                                                             \
                                  : [ptr]"b"(&location) /* cannot use register 0 here */                       \
                                  , [val]"r"(value)                                                            \
@@ -217,22 +358,18 @@ namespace internal {
     __TBB_MACHINE_DEFINE_LOAD_STORE(1,"lbz","stb","cmpw")
     __TBB_MACHINE_DEFINE_LOAD_STORE(2,"lhz","sth","cmpw")
     __TBB_MACHINE_DEFINE_LOAD_STORE(4,"lwz","stw","cmpw")
-
 #if __TBB_WORDSIZE==8
-
     __TBB_MACHINE_DEFINE_LOAD_STORE(8,"ld" ,"std","cmpd")
-
 #elif __TBB_64BIT_ATOMICS /* && __TBB_WORDSIZE==4 */
-
     template <typename T>
     struct machine_load_store<T,8> {
         static inline T load_with_acquire(const volatile T& location) {
             T result;
             T result_register; // dummy variable to allocate a register
-            __asm__ __volatile__("ld %[res],0(%[ptr])\n\t"
-                                 "std %[res],%[resm]\n"
+            __asm__ __volatile__("ld %[res], 0(%[ptr])\n\t"
+                                 "std %[res], %[resm]\n"
                                  "0:\n\t"
-                                 "cmpd %[res],%[res]\n\t"
+                                 "cmpd %[res], %[res]\n\t"
                                  "bne- 0b\n\t"
                                  "isync"
                                  : [resm]"=m"(result)
@@ -243,12 +380,11 @@ namespace internal {
                                  , "cr0"               /* clobbered by cmpd */);
             return result;
         }
-
         static inline void store_with_release(volatile T &location, T value) {
             T value_register; // dummy variable to allocate a register
             __asm__ __volatile__("lwsync\n\t"
-                                 "ld %[val],%[valm]\n\t"
-                                 "std %[val],0(%[ptr])"
+                                 "ld %[val], %[valm]\n\t"
+                                 "std %[val], 0(%[ptr])"
                                  : "=m"(location)      /* redundant with "memory" */
                                  , [val]"=&r"(value_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
@@ -261,8 +397,8 @@ namespace internal {
         static inline T load (const volatile T& location) {
             T result;
             T result_register; // dummy variable to allocate a register
-            __asm__ __volatile__("ld %[res],0(%[ptr])\n\t"
-                                 "std %[res],%[resm]"
+            __asm__ __volatile__("ld %[res], 0(%[ptr])\n\t"
+                                 "std %[res], %[resm]"
                                  : [resm]"=m"(result)
                                  , [res]"=&r"(result_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
@@ -270,11 +406,10 @@ namespace internal {
                                  ); /*(no compiler fence)*/ /*(cr0 not affected)*/
             return result;
         }
-
         static inline void store (volatile T &location, T value) {
             T value_register; // dummy variable to allocate a register
-            __asm__ __volatile__("ld %[val],%[valm]\n\t"
-                                 "std %[val],0(%[ptr])"
+            __asm__ __volatile__("ld %[val], %[valm]\n\t"
+                                 "std %[val], 0(%[ptr])"
                                  : "=m"(location)
                                  , [val]"=&r"(value_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
@@ -283,29 +418,30 @@ namespace internal {
         }
     };
     #define __TBB_machine_load_store_relaxed_8
-
 #endif /* __TBB_WORDSIZE==4 && __TBB_64BIT_ATOMICS */
 
 }} // namespaces internal, tbb
 
 #undef __TBB_MACHINE_DEFINE_LOAD_STORE
+#undef __TBB_USE_GENERIC_PART_WORD_CAS
 
-#define __TBB_USE_GENERIC_PART_WORD_CAS                     1
 #define __TBB_USE_GENERIC_FETCH_ADD                         1
 #define __TBB_USE_GENERIC_FETCH_STORE                       1
 #define __TBB_USE_GENERIC_SEQUENTIAL_CONSISTENCY_LOAD_STORE 1
 
-#define __TBB_control_consistency_helper() __asm__ __volatile__("isync": : :"memory")
-#define __TBB_full_memory_fence()          __asm__ __volatile__( "sync": : :"memory")
+#define __TBB_control_consistency_helper() __asm__ __volatile__( "isync": : :"memory")
+#define __TBB_acquire_consistency_helper() __asm__ __volatile__("lwsync": : :"memory")
+#define __TBB_release_consistency_helper() __asm__ __volatile__("lwsync": : :"memory")
+#define __TBB_full_memory_fence()          __asm__ __volatile__(  "sync": : :"memory")
 
-static inline intptr_t __TBB_machine_lg( uintptr_t x ) {
+static inline intptr_t __TBB_machine_lg(uintptr_t x) {
     __TBB_ASSERT(x, "__TBB_Log2(0) undefined");
     // cntlzd/cntlzw starts counting at 2^63/2^31 (ignoring any higher-order bits), and does not affect cr0
 #if __TBB_WORDSIZE==8
-    __asm__ __volatile__ ("cntlzd %0,%0" : "+r"(x));
+    __asm__ __volatile__ ("cntlzd %0, %0" : "+r"(x));
     return 63-static_cast<intptr_t>(x);
 #else
-    __asm__ __volatile__ ("cntlzw %0,%0" : "+r"(x));
+    __asm__ __volatile__ ("cntlzw %0, %0" : "+r"(x));
     return 31-static_cast<intptr_t>(x);
 #endif
 }
@@ -315,7 +451,7 @@ static inline intptr_t __TBB_machine_lg( uintptr_t x ) {
 typedef uint32_t __TBB_Flag;
 #define __TBB_Flag __TBB_Flag
 
-inline bool __TBB_machine_trylockbyte( __TBB_atomic __TBB_Flag &flag ) {
+inline bool __TBB_machine_trylockbyte(__TBB_atomic __TBB_Flag &flag) {
     return __TBB_machine_cmpswp4(&flag,1,0)==0;
 }
 #define __TBB_TryLockByte(P) __TBB_machine_trylockbyte(P)

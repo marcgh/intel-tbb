@@ -46,7 +46,7 @@
     __TBB_USE_GENERIC_RELAXED_LOAD_STORE
     __TBB_USE_FETCHSTORE_AS_FULL_FENCED_STORE
 
-    In this case tbb_machine.h will add missing functionality based on a minimal set 
+    In this case tbb_machine.h will add missing functionality based on a minimal set
     of APIs that are required to be implemented by all plug-n headers as described
     further.
     Note that these generic implementations may be sub-optimal for a particular
@@ -110,7 +110,7 @@
         data-dependent, and will then make subsequent code behave as if the
         original data dependency were acquired.
         It needs only a compiler fence where implied by the architecture
-        either specifically (like IA-64 architecture) or because generally stronger 
+        either specifically (like IA-64 architecture) or because generally stronger
         "acquire" semantics are enforced (like x86).
         It is always valid, though potentially suboptimal, to replace
         control with acquire on the load and then remove the helper.
@@ -216,7 +216,7 @@ template<> struct atomic_selector<8> {
         #include "machine/icc_generic.h"
     #elif defined(_M_IX86) && !defined(__TBB_WIN32_USE_CL_BUILTINS)
         #include "machine/windows_ia32.h"
-    #elif defined(_M_X64) 
+    #elif defined(_M_X64)
         #include "machine/windows_intel64.h"
     #elif defined(_XBOX)
         #include "machine/xbox360_ppc.h"
@@ -264,7 +264,7 @@ template<> struct atomic_selector<8> {
     #elif __x86_64__
         #include "machine/linux_intel64.h"
     #elif __POWERPC__
-        #include "machine/mac_ppc.h"
+        #include "machine/gcc_power.h"
     #endif
     #include "machine/macos_common.h"
 
@@ -850,7 +850,7 @@ inline intptr_t __TBB_Log2( uintptr_t x ) {
     if( x==0 ) return -1;
     intptr_t result = 0;
 
-#if !defined(_M_ARM) 
+#if !defined(_M_ARM)
     uintptr_t tmp;
     if( sizeof(x)>4 && (tmp = ((uint64_t)x)>>32) ) { x=tmp; result += 32; }
 #endif
