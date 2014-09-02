@@ -179,7 +179,7 @@ struct atomic_load_store_traits;    // Primary template declaration
         inline static void store( volatile T& location, T value ) {     \
             __TBB_store_##M( location, value );                         \
         }                                                               \
-    }
+    }\
 
 #if __TBB_USE_FENCED_ATOMICS
 __TBB_DECL_FENCED_ATOMIC_PRIMITIVES(1,full_fence)

@@ -84,42 +84,31 @@
     #endif
 #endif
 
-inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t comparand) {
-    uint8_t result, temporary;
-    int offset = (long int)ptr & 0x3,
-    #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
-        maskoff = (offset == 0) ? 0x00ffffff :
-                  (offset == 1) ? 0xff00ffff :
-                  (offset == 2) ? 0xffff00ff : 0xffffff00;
-    #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
-        maskoff = (offset == 0) ? 0xffffff00 :
-                  (offset == 1) ? 0xffff00ff :
-                  (offset == 2) ? 0xff00ffff : 0x00ffffff;
-    #else
-        #error "Unsupported endianess found... Aborting!"
-    #endif
+// Save original compiler diagnostic options and disable a problematic one
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
 
-    __asm__ __volatile__("sync\n"
-                         "0:\n\t"                               /* ==> retry loop */
+inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t comparand) {
+    uint8_t result;
+    #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
+    uint8_t temporary;
+    int offset = (long int)ptr & 0x3,
+    maskoff = (offset == 0) ? 0x00ffffff :
+              (offset == 1) ? 0xff00ffff :
+              (offset == 2) ? 0xffff00ff : 0xffffff00;
+
+    __asm__ __volatile__("0:\n\t"
+                         "sync\n\t"                             /* ==> retry loop */
                          "lwarx %[res], 0, %[ptr]\n\t"          /* load w/ reservation */
                          "mr %[tmp], %[res]\n\t"                /* keep a copy for later use */
-                         #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
                          "cmpwi %[off], 0\n\t"                  /* if BE offset is 0 (shift 24) */
                          "beq 2f\n\t"                           /* go to shift24 */
                          "cmpwi %[off], 1\n\t"                  /* if BE offset is 1 (shift 16) */
                          "beq 3f\n\t"                           /* go to shift16 */
                          "cmpwi %[off], 2\n\t"                  /* if BE offset is 2 (shift 8) */
                          "beq 4f\n"                             /* go to shift8 */
-                         #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
-                         "cmpwi %[off], 3\n\t"                  /* if LE offset is 3 (shift 24) */
-                         "beq 2f\n\t"                           /* go to shift24 */
-                         "cmpwi %[off], 2\n\t"                  /* if LE offset is 2 (shift 16) */
-                         "beq 4f\n\t"                           /* go to shift16 */
-                         "cmpwi %[off], 1\n\t"                  /* if LE offset is 1 (shift 8) */
-                         "beq 4f\n"                             /* go to shift8 */
-                         #endif
 
-                         "1:\n\t"                               /* ==> Rightmost byte to work on (noshift0) */
+                         "1:\n\t"                               /* ==> Rightmost byte to work on (noshift) */
                          "andi. %[res], %[res], 0xff\n\t"       /* clean up retrieved value (no shift needed) */
                          "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
                          "bne- 6f\n\t"                          /* exit if not same (** dup **) */
@@ -160,7 +149,7 @@ inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t 
                          "bne- 0b\n"                            /* retry if reservation lost */
 
                          "6:\n\t"                               /* ==> Exit */
-                         "isync"                                /* lightweight sync */
+                         "isync"                                /* instruction sync */
                          : [res]"=&r"(result)                   /* value retrieved from address + offset */
                          , [tmp]"=&r"(temporary)                /* temporary data holder */
                          : [ptr]"r"((void *)((long int)ptr & 0xFFFFFFFFFFFFFFFC))   /* aligned access address */
@@ -171,46 +160,51 @@ inline uint8_t __TBB_machine_cmpswp1(volatile void *ptr, uint8_t value, uint8_t 
                          : "memory"                             /* compiler full fence */
                          , "cr0"                                /* clobbered by cmpw and/or stwcx. */
                          );
+
+    #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
+    // [FIXME] Replace this GNU CC built-in with a more efficient ASM implementation for little-endian
+    result = __sync_val_compare_and_swap((volatile uint8_t *)ptr, comparand, value);
+    #else
+        #error "Unsupported endianess found... Aborting!"
+    #endif
+
     return result;
 }
 
 inline int16_t __TBB_machine_cmpswp2(volatile void *ptr, int16_t value, int16_t comparand) {
-    int16_t result, temporary;
+    int16_t result;
+    #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
+    int16_t  temporary;
     int offset = (long int)ptr & 0x3;
-
-    __asm__ __volatile__("sync\n"
-                         "0:\n\t"                               /* ==> retry loop */
+    __asm__ __volatile__("0:\n\t"                               /* ==> retry loop */
+                         "sync\n\t"                             /* sync every memory access */
                          "lwarx %[res], 0, %[ptr]\n\t"          /* load w/ reservation */
                          "mr %[tmp], %[res]\n\t"                /* keep a copy for later use */
-                         #if __TBB_ENDIANNESS==__TBB_ENDIAN_BIG
-                         "cmpwi %[off], 2\n\t"                  /* if BE offset is 2 (not 0) */
-                         #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
-                         "cmpwi %[off], 0\n\t"                  /* if LE offset os 0 (not 2) */
-                         #endif
-                         "beq 2f\n"                             /* go to no shift parameters */
+                         "cmpwi %[off], 0\n\t"                  /* if offset is 0 (on BE), shift 16 */
+                         "beq 2f\n"                             /* branch to shift code, otherwise no shift */
 
-                         "1:\n\t"                               /* ==> Leftmost half-word to work on (shift16) */
+                         "1:\n\t"                               /* ==> Work on data directly (noshift) */
+                         "andi. %[res], %[res], 0xffff\n\t"     /* clean up retrieved value */
+                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
+                         "bne- 4f\n\t"                          /* exit if not same (** dup **) */
+                         "andis. %[tmp], %[tmp], 0xffff\n\t"    /* set the mask on saved value */
+                         "or %[val], %[val], %[tmp]\n"          /* combine original value with shifted one for storage */
+                         "b 3f\n"                               /* step right into storage */
+
+                         "2:\n\t"                               /* ==> Perform right shift 16 */
                          "srwi %[res], %[res], 16\n\t"          /* perform required shift */
                          "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
                          "bne- 4f\n\t"                          /* exit if not same (** dup **) */
                          "slwi %[val], %[val], 16\n\t"          /* shift new value to proper position in word */
                          "andi. %[tmp], %[tmp], 0xffff\n\t"     /* set the mask on saved value */
                          "or %[val], %[val], %[tmp]\n\t"        /* combine original value with new one for storage */
-                         "b 3f\n"                               /* step right into storage */
-
-                         "2:\n\t"                               /* ==> Rightmost half-word to work on (noshift) */
-                         "andi. %[res], %[res], 0xffff\n\t"     /* clean up retrieved value */
-                         "cmpw %[cmp], %[res]\n\t"              /* compare against comparand (** dup **) */
-                         "bne- 4f\n\t"                          /* exit if not same (** dup **) */
-                         "andis. %[tmp], %[tmp], 0xffff\n\t"    /* set the mask on saved value */
-                         "or %[val], %[val], %[tmp]\n"          /* combine original value with new one for storage */
 
                          "3:\n\t"                               /* ==> Storage steps (storage) */
-                         "stwcx. %[val], 0, %[ptr]\n\t"         /* store new value */
+                         "stwcx. %[val], 0, %[ptr]\n\t"         /* reserved store new value */
                          "bne- 0b\n"                            /* retry if reservation lost */
 
                          "4:\n\t"                               /* ==> Exit */
-                         "isync"                                /* lightweight sync */
+                         "isync"                                /* instruction sync */
                          : [res]"=&r"(result)                   /* value retrieved from address + offset */
                          , [tmp]"=&r"(temporary)                /* temporary data holder */
                          : [ptr]"r"((void *)((long int)ptr & 0xFFFFFFFFFFFFFFFC))   /* aligned access address */
@@ -220,6 +214,12 @@ inline int16_t __TBB_machine_cmpswp2(volatile void *ptr, int16_t value, int16_t 
                          : "memory"                             /* compiler full fence */
                          , "cr0"                                /* clobbered by cmpw and/or stwcx. */
                          );
+    #elif __TBB_ENDIANNESS==__TBB_ENDIAN_LITTLE
+    // [FIXME] Replace this GNU CC built-in with a more efficient ASM implementation for little-endian
+    result = __sync_val_compare_and_swap((volatile int16_t *)ptr, comparand, value);
+    #else
+        #error "Unsupported endianess found... Aborting!"
+    #endif
     return result;
 }
 
@@ -377,7 +377,8 @@ namespace internal {
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
                                  , "m"(location)       /* redundant with "memory" */
                                  : "memory"            /* compiler acquire fence */
-                                 , "cr0"               /* clobbered by cmpd */);
+                                 , "cr0"               /* clobbered by cmpd */
+                                );
             return result;
         }
         static inline void store_with_release(volatile T &location, T value) {
@@ -389,7 +390,8 @@ namespace internal {
                                  , [val]"=&r"(value_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
                                  , [valm]"m"(value)
-                                 : "memory"/*compiler release fence*/ /*(cr0 not affected)*/);
+                                 : "memory"            /*compiler release fence*/
+                                );                     /*(cr0 not affected)*/
         }
     };
 
@@ -403,7 +405,7 @@ namespace internal {
                                  , [res]"=&r"(result_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
                                  , "m"(location)
-                                 ); /*(no compiler fence)*/ /*(cr0 not affected)*/
+                                );   /*(no compiler fence)*/ /*(cr0 not affected)*/
             return result;
         }
         static inline void store (volatile T &location, T value) {
@@ -414,7 +416,7 @@ namespace internal {
                                  , [val]"=&r"(value_register)
                                  : [ptr]"b"(&location) /* cannot use register 0 here */
                                  , [valm]"m"(value)
-                                 ); /*(no compiler fence)*/ /*(cr0 not affected)*/
+                                 );  /*(no compiler fence)*/ /*(cr0 not affected)*/
         }
     };
     #define __TBB_machine_load_store_relaxed_8
@@ -455,3 +457,6 @@ inline bool __TBB_machine_trylockbyte(__TBB_atomic __TBB_Flag &flag) {
     return __TBB_machine_cmpswp4(&flag,1,0)==0;
 }
 #define __TBB_TryLockByte(P) __TBB_machine_trylockbyte(P)
+
+// Restore previous diagnostic compiler options
+#pragma GCC diagnostic pop
